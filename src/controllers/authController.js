@@ -6,6 +6,9 @@ const generateToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET || 'secret
 export const registerUser = async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
+    if (!name || !email || !password) {
+      res.status(400); throw new Error('Please add all fields');
+    }
     const userExists = await User.findOne({ email });
     if (userExists) {
       res.status(400); throw new Error('User already exists');
@@ -18,6 +21,9 @@ export const registerUser = async (req, res, next) => {
 export const loginUser = async (req, res, next) => {
   try {
     const { email, password } = req.body;
+    if (!email || !password) {
+      res.status(400); throw new Error('Please provide email and password');
+    }
     const user = await User.findOne({ email });
     if (user && (await user.matchPassword(password))) {
       res.json({ success: true, data: { _id: user._id, name: user.name, email: user.email, token: generateToken(user._id) } });

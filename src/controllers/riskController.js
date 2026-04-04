@@ -37,7 +37,13 @@ export const updateRisk = async (req, res, next) => {
       risk.history.push({ status: req.body.status, changedBy: req.user._id });
     }
     
-    Object.assign(risk, req.body);
+    const allowedFields = ['title', 'description', 'probability', 'impact', 'mitigationPlan', 'status'];
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        risk[field] = req.body[field];
+      }
+    });
+
     risk.updatedBy = req.user._id;
     const updatedRisk = await risk.save();
     res.json({ success: true, data: updatedRisk });

@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import connectDB from './src/config/db.js';
 import { apiLimiter } from './src/middleware/rateLimiter.js';
-import { errorHandler, notFound } from './src/middleware/error.js';
+import { errorHandler, notFound } from './src/middleware/errorMiddleware.js';
 import authRoutes from './src/routes/authRoutes.js';
 import riskRoutes from './src/routes/riskRoutes.js';
 
