@@ -5,6 +5,11 @@ const VALID_RISK_STATUSES = ['Open', 'Monitoring', 'Mitigated', 'Closed'];
 const VALID_PROBABILITIES = ['Low', 'Medium', 'High'];
 const VALID_IMPACTS = ['Low', 'Medium', 'High', 'Critical'];
 const MAX_HISTORY_ENTRIES = 200;
+const LEGACY_STATUS_MAP = {
+  identified: 'Open',
+  mitigating: 'Monitoring',
+  resolved: 'Closed'
+};
 
 const isValidObjectId = (value) => /^[a-fA-F0-9]{24}$/.test(value || '');
 
@@ -31,6 +36,18 @@ const buildNotFound = (message) => {
 const setStatusAndThrow = (res, error) => {
   res.status(error.status || 500);
   throw error;
+};
+
+const normalizeRiskStatus = (value) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const legacyMapped = LEGACY_STATUS_MAP[trimmed.toLowerCase()];
+  if (legacyMapped) return legacyMapped;
+
+  const directMatch = VALID_RISK_STATUSES.find((status) => status.toLowerCase() === trimmed.toLowerCase());
+  return directMatch || null;
 };
 
 const appendHistoryEntry = (risk, { status, note, changedBy }) => {
@@ -96,8 +113,8 @@ export const createProjectRisk = async (req, res, next) => {
       setStatusAndThrow(res, buildBadRequest(`impact must be one of: ${VALID_IMPACTS.join(', ')}`));
     }
 
-    const initialStatus = currentStatus || 'Open';
-    if (!VALID_RISK_STATUSES.includes(initialStatus)) {
+    const initialStatus = currentStatus === undefined ? 'Open' : normalizeRiskStatus(currentStatus);
+    if (!initialStatus) {
       setStatusAndThrow(res, buildBadRequest(`currentStatus must be one of: ${VALID_RISK_STATUSES.join(', ')}`));
     }
 
@@ -228,8 +245,8 @@ export const updateRisk = async (req, res, next) => {
     }
 
     if (req.body.currentStatus !== undefined) {
-      const nextStatus = req.body.currentStatus;
-      if (!VALID_RISK_STATUSES.includes(nextStatus)) {
+      const nextStatus = normalizeRiskStatus(req.body.currentStatus);
+      if (!nextStatus) {
         setStatusAndThrow(res, buildBadRequest(`currentStatus must be one of: ${VALID_RISK_STATUSES.join(', ')}`));
       }
 
@@ -287,8 +304,8 @@ export const updateRiskStatus = async (req, res, next) => {
       setStatusAndThrow(res, buildBadRequest('note must be a string'));
     }
 
-    const normalizedStatus = status.trim();
-    if (!VALID_RISK_STATUSES.includes(normalizedStatus)) {
+    const normalizedStatus = normalizeRiskStatus(status);
+    if (!normalizedStatus) {
       setStatusAndThrow(res, buildBadRequest(`Invalid status. Allowed values: ${VALID_RISK_STATUSES.join(', ')}`));
     }
 
