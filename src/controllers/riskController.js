@@ -123,10 +123,17 @@ export const getProjectRisks = async (req, res, next) => {
 
 export const getRiskById = async (req, res, next) => {
   try {
-    const { riskId } = req.params;
+    const riskId = (req.params.riskId || req.params.id || '').trim();
+    const projectId = (req.params.projectId || '').trim();
     ensureObjectId(riskId, 'riskId');
 
-    const risk = await Risk.findById(riskId).populate('createdBy updatedBy history.changedBy', 'name email');
+    const query = { _id: riskId };
+    if (projectId) {
+      ensureObjectId(projectId, 'projectId');
+      query.projectId = projectId;
+    }
+
+    const risk = await Risk.findOne(query).populate('createdBy updatedBy history.changedBy', 'name email');
     if (!risk) {
       setStatusAndThrow(res, buildNotFound('Risk not found'));
     }
