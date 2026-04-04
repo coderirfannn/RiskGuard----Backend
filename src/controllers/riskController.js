@@ -1,98 +1,248 @@
 import Risk from '../models/Risk.js';
+import Project from '../models/Project.js';
 
-const VALID_RISK_STATUSES = ['Identified', 'Mitigating', 'Resolved'];
+const VALID_RISK_STATUSES = ['Open', 'Monitoring', 'Mitigated', 'Closed'];
+const VALID_PROBABILITIES = ['Low', 'Medium', 'High'];
+const VALID_IMPACTS = ['Low', 'Medium', 'High', 'Critical'];
 
-const validateObjectId = (id) => /^[a-fA-F0-9]{24}$/.test(id);
+const isValidObjectId = (value) => /^[a-fA-F0-9]{24}$/.test(value || '');
 
-export const getRisks = async (req, res, next) => {
-  try {
-    const risks = await Risk.find().populate('createdBy', 'name email').sort('-createdAt');
-    res.json({ success: true, data: risks });
-  } catch (error) { next(error); }
+const ensureObjectId = (value, label) => {
+  if (!isValidObjectId(value)) {
+    const error = new Error(`Invalid ${label} format`);
+    error.status = 400;
+    throw error;
+  }
 };
 
-export const getRisk = async (req, res, next) => {
-  try {
-    const risk = await Risk.findById(req.params.id).populate('createdBy updatedBy history.changedBy', 'name');
-    if (!risk) { res.status(404); throw new Error('Risk not found'); }
-    res.json({ success: true, data: risk });
-  } catch (error) { next(error); }
+const buildBadRequest = (message) => {
+  const error = new Error(message);
+  error.status = 400;
+  return error;
 };
 
-export const createRisk = async (req, res, next) => {
+const buildNotFound = (message) => {
+  const error = new Error(message);
+  error.status = 404;
+  return error;
+};
+
+const setStatusAndThrow = (res, error) => {
+  res.status(error.status || 500);
+  throw error;
+};
+
+export const createProjectRisk = async (req, res, next) => {
   try {
-    const risk = new Risk({
-      ...req.body,
+    const { projectId } = req.params;
+    ensureObjectId(projectId, 'projectId');
+
+    const project = await Project.findById(projectId);
+    if (!project) {
+      setStatusAndThrow(res, buildNotFound('Project not found'));
+    }
+
+    const {
+      title,
+      description,
+      probability,
+      impact,
+      mitigationActions,
+      currentStatus,
+      note
+    } = req.body;
+
+    if (!title || !title.trim()) {
+      setStatusAndThrow(res, buildBadRequest('title is required'));
+    }
+    if (!mitigationActions || !mitigationActions.trim()) {
+      setStatusAndThrow(res, buildBadRequest('mitigationActions is required'));
+    }
+    if (!VALID_PROBABILITIES.includes(probability)) {
+      setStatusAndThrow(res, buildBadRequest(`probability must be one of: ${VALID_PROBABILITIES.join(', ')}`));
+    }
+    if (!VALID_IMPACTS.includes(impact)) {
+      setStatusAndThrow(res, buildBadRequest(`impact must be one of: ${VALID_IMPACTS.join(', ')}`));
+    }
+
+    const initialStatus = currentStatus || 'Open';
+    if (!VALID_RISK_STATUSES.includes(initialStatus)) {
+      setStatusAndThrow(res, buildBadRequest(`currentStatus must be one of: ${VALID_RISK_STATUSES.join(', ')}`));
+    }
+
+    const risk = await Risk.create({
+      projectId,
+      title: title.trim(),
+      description: typeof description === 'string' ? description.trim() : '',
+      probability,
+      impact,
+      mitigationActions: mitigationActions.trim(),
+      currentStatus: initialStatus,
       createdBy: req.user._id,
-      history: [{ status: req.body.status || 'Identified', changedBy: req.user._id }]
+      updatedBy: req.user._id,
+      history: [{
+        status: initialStatus,
+        note: typeof note === 'string' ? note.trim() : 'Risk created',
+        changedBy: req.user._id,
+        timestamp: new Date()
+      }]
     });
-    const savedRisk = await risk.save();
-    res.status(201).json({ success: true, data: savedRisk });
-  } catch (error) { next(error); }
+
+    res.status(201).json({ success: true, data: risk });
+  } catch (error) {
+    console.error('[risk-create-error]', {
+      method: req.method,
+      path: req.originalUrl,
+      projectId: req.params?.projectId,
+      bodyKeys: Object.keys(req.body || {}),
+      message: error.message
+    });
+    next(error);
+  }
+};
+
+export const getProjectRisks = async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    ensureObjectId(projectId, 'projectId');
+
+    const projectExists = await Project.exists({ _id: projectId });
+    if (!projectExists) {
+      setStatusAndThrow(res, buildNotFound('Project not found'));
+    }
+
+    const risks = await Risk.find({ projectId })
+      .populate('createdBy updatedBy history.changedBy', 'name email')
+      .sort('-createdAt');
+
+    res.status(200).json({ success: true, count: risks.length, data: risks });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getRiskById = async (req, res, next) => {
+  try {
+    const { riskId } = req.params;
+    ensureObjectId(riskId, 'riskId');
+
+    const risk = await Risk.findById(riskId).populate('createdBy updatedBy history.changedBy', 'name email');
+    if (!risk) {
+      setStatusAndThrow(res, buildNotFound('Risk not found'));
+    }
+
+    res.status(200).json({ success: true, data: risk });
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const updateRisk = async (req, res, next) => {
   try {
-    const risk = await Risk.findById(req.params.id);
-    if (!risk) { res.status(404); throw new Error('Risk not found'); }
-    
-    // Auto-update history if status changes
-    if (req.body.status && req.body.status !== risk.status) {
-      risk.history.push({ status: req.body.status, changedBy: req.user._id });
+    const { riskId } = req.params;
+    ensureObjectId(riskId, 'riskId');
+
+    const risk = await Risk.findById(riskId);
+    if (!risk) {
+      setStatusAndThrow(res, buildNotFound('Risk not found'));
     }
-    
-    const allowedFields = ['title', 'description', 'probability', 'impact', 'mitigationPlan', 'status'];
-    allowedFields.forEach(field => {
+
+    if (req.body.probability && !VALID_PROBABILITIES.includes(req.body.probability)) {
+      setStatusAndThrow(res, buildBadRequest(`probability must be one of: ${VALID_PROBABILITIES.join(', ')}`));
+    }
+
+    if (req.body.impact && !VALID_IMPACTS.includes(req.body.impact)) {
+      setStatusAndThrow(res, buildBadRequest(`impact must be one of: ${VALID_IMPACTS.join(', ')}`));
+    }
+
+    const allowedFields = ['title', 'description', 'probability', 'impact', 'mitigationActions'];
+    for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
         risk[field] = req.body[field];
       }
-    });
+    }
+
+    if (req.body.currentStatus !== undefined) {
+      const nextStatus = req.body.currentStatus;
+      if (!VALID_RISK_STATUSES.includes(nextStatus)) {
+        setStatusAndThrow(res, buildBadRequest(`currentStatus must be one of: ${VALID_RISK_STATUSES.join(', ')}`));
+      }
+
+      if (nextStatus !== risk.currentStatus) {
+        risk.currentStatus = nextStatus;
+        risk.history.push({
+          status: nextStatus,
+          note: typeof req.body.note === 'string' ? req.body.note.trim() : 'Status changed during risk update',
+          changedBy: req.user._id,
+          timestamp: new Date()
+        });
+      }
+    }
 
     risk.updatedBy = req.user._id;
+
     const updatedRisk = await risk.save();
-    res.json({ success: true, data: updatedRisk });
-  } catch (error) { next(error); }
+    res.status(200).json({ success: true, data: updatedRisk });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteRisk = async (req, res, next) => {
+  try {
+    const { riskId } = req.params;
+    ensureObjectId(riskId, 'riskId');
+
+    const risk = await Risk.findById(riskId);
+    if (!risk) {
+      setStatusAndThrow(res, buildNotFound('Risk not found'));
+    }
+
+    await risk.deleteOne();
+    res.status(200).json({ success: true, data: {} });
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const updateRiskStatus = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const { status } = req.body;
+    const { riskId } = req.params;
+    const { status, note } = req.body;
 
-    if (!validateObjectId(id)) {
-      res.status(400);
-      throw new Error('Invalid risk id format');
-    }
+    ensureObjectId(riskId, 'riskId');
 
     if (typeof status !== 'string' || !status.trim()) {
-      res.status(400);
-      throw new Error('status is required and must be a non-empty string');
+      setStatusAndThrow(res, buildBadRequest('status is required and must be a non-empty string'));
     }
 
     if (!VALID_RISK_STATUSES.includes(status)) {
-      res.status(400);
-      throw new Error(`Invalid status. Allowed values: ${VALID_RISK_STATUSES.join(', ')}`);
+      setStatusAndThrow(res, buildBadRequest(`Invalid status. Allowed values: ${VALID_RISK_STATUSES.join(', ')}`));
     }
 
-    const risk = await Risk.findById(id);
+    const risk = await Risk.findById(riskId);
     if (!risk) {
-      res.status(404);
-      throw new Error('Risk not found');
+      setStatusAndThrow(res, buildNotFound('Risk not found'));
     }
 
-    if (risk.status !== status) {
-      risk.status = status;
-      risk.history.push({ status, changedBy: req.user?._id });
-      risk.updatedBy = req.user?._id;
+    if (risk.currentStatus !== status) {
+      risk.currentStatus = status;
+      risk.updatedBy = req.user._id;
+      risk.history.push({
+        status,
+        note: typeof note === 'string' ? note.trim() : 'Status updated',
+        changedBy: req.user._id,
+        timestamp: new Date()
+      });
       await risk.save();
     }
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       message: 'Risk status updated successfully',
       data: {
         id: risk._id,
-        status: risk.status,
+        currentStatus: risk.currentStatus,
         updatedAt: risk.updatedAt
       }
     });
@@ -100,7 +250,7 @@ export const updateRiskStatus = async (req, res, next) => {
     console.error('[risk-status-update-error]', {
       method: req.method,
       path: req.originalUrl,
-      riskId: req.params?.id,
+      riskId: req.params?.riskId,
       userId: req.user?._id?.toString?.(),
       bodyKeys: Object.keys(req.body || {}),
       message: error.message
@@ -109,22 +259,21 @@ export const updateRiskStatus = async (req, res, next) => {
   }
 };
 
-export const deleteRisk = async (req, res, next) => {
+export const getRiskHistory = async (req, res, next) => {
   try {
-    const risk = await Risk.findById(req.params.id);
-    if (!risk) { res.status(404); throw new Error('Risk not found'); }
-    await risk.deleteOne();
-    res.json({ success: true, data: {} });
-  } catch (error) { next(error); }
-};
+    const { riskId } = req.params;
+    ensureObjectId(riskId, 'riskId');
 
-export const getStats = async (req, res, next) => {
-  try {
-    const total = await Risk.countDocuments();
-    const highAndCritical = await Risk.countDocuments({ impact: { $in: ['High', 'Critical'] } });
-    const resolved = await Risk.countDocuments({ status: 'Resolved' });
-    res.json({ success: true, data: { total, highAndCritical, resolved } });
-  } catch (error) { next(error); }
+    const risk = await Risk.findById(riskId).populate('history.changedBy', 'name email');
+    if (!risk) {
+      setStatusAndThrow(res, buildNotFound('Risk not found'));
+    }
+
+    const history = [...risk.history].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    res.status(200).json({ success: true, count: history.length, data: history });
+  } catch (error) {
+    next(error);
+  }
 };
 
 export { VALID_RISK_STATUSES };

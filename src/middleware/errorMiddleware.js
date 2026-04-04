@@ -1,5 +1,5 @@
 export const errorHandler = (err, req, res, next) => {
-    let statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+    let statusCode = err.status || (res.statusCode === 200 ? 500 : res.statusCode);
     
     // Mongoose casting err handles
     if(err.name === 'CastError' && err.kind === 'ObjectId') {
@@ -16,6 +16,8 @@ export const errorHandler = (err, req, res, next) => {
     res.status(statusCode).json({
         success: false,
         message: err.message,
+        path: req.originalUrl,
+        timestamp: new Date().toISOString(),
         stack: process.env.NODE_ENV === 'production' ? null : err.stack,
     });
 };
