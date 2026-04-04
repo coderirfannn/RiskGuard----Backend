@@ -49,7 +49,7 @@ export const createProject = async (req, res, next) => {
 
 export const getProjects = async (req, res, next) => {
   try {
-    const projects = await Project.find().sort('-createdAt');
+    const projects = await Project.find().sort('-createdAt').lean();
     res.status(200).json({ success: true, count: projects.length, data: projects });
   } catch (error) {
     next(error);
@@ -65,7 +65,7 @@ export const getProjectById = async (req, res, next) => {
       throw new Error('Invalid projectId format');
     }
 
-    const project = await Project.findById(projectId);
+    const project = await Project.findById(projectId).lean();
     if (!project) {
       res.status(404);
       throw new Error('Project not found');
