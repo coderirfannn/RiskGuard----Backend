@@ -15,7 +15,13 @@ export const registerUser = async (req, res, next) => {
     }
     const user = await User.create({ name, email, password });
     res.status(201).json({ success: true, data: { _id: user._id, name: user.name, email: user.email, token: generateToken(user._id) } });
-  } catch (error) { next(error); }
+  } catch (error) {
+    if (error.code === 11000) {
+      res.status(400);
+      return next(new Error('Duplicate user data detected. Please use a different email.'));
+    }
+    next(error);
+  }
 };
 
 export const loginUser = async (req, res, next) => {
