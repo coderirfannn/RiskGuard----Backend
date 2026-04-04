@@ -20,6 +20,7 @@ const riskSchema = new mongoose.Schema({
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
 }, { timestamps: true });
 
+// Supports project-scoped list views and status filtering at scale.
 riskSchema.index({ projectId: 1, createdAt: -1 });
 riskSchema.index({ projectId: 1, currentStatus: 1 });
 

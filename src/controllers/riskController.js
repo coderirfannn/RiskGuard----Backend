@@ -34,6 +34,7 @@ const setStatusAndThrow = (res, error) => {
 };
 
 const appendHistoryEntry = (risk, { status, note, changedBy }) => {
+  // Reject repeated transitions to keep history meaningful and audit-safe.
   const latest = risk.history[risk.history.length - 1];
   if (latest?.status === status) {
     throw buildBadRequest('Duplicate status transition is not allowed');
@@ -47,6 +48,7 @@ const appendHistoryEntry = (risk, { status, note, changedBy }) => {
   });
 
   if (risk.history.length > MAX_HISTORY_ENTRIES) {
+    // Keep a bounded in-document history size for write/read performance.
     risk.history = risk.history.slice(-MAX_HISTORY_ENTRIES);
   }
 };
@@ -181,33 +183,33 @@ export const updateRisk = async (req, res, next) => {
     ensureObjectId(req.user?._id?.toString?.(), 'updatedBy');
 
     const risk = await Risk.findById(riskId);
-        if (req.body.title !== undefined) {
-          if (typeof req.body.title !== 'string' || !req.body.title.trim()) {
-            setStatusAndThrow(res, buildBadRequest('title must be a non-empty string'));
-          }
-          req.body.title = req.body.title.trim();
-        }
-
-        if (req.body.description !== undefined) {
-          if (typeof req.body.description !== 'string') {
-            setStatusAndThrow(res, buildBadRequest('description must be a string'));
-          }
-          req.body.description = req.body.description.trim();
-        }
-
-        if (req.body.mitigationActions !== undefined) {
-          if (typeof req.body.mitigationActions !== 'string' || !req.body.mitigationActions.trim()) {
-            setStatusAndThrow(res, buildBadRequest('mitigationActions must be a non-empty string'));
-          }
-          req.body.mitigationActions = req.body.mitigationActions.trim();
-        }
-
-        if (req.body.note !== undefined && typeof req.body.note !== 'string') {
-          setStatusAndThrow(res, buildBadRequest('note must be a string'));
-        }
-
     if (!risk) {
       setStatusAndThrow(res, buildNotFound('Risk not found'));
+    }
+
+    if (req.body.title !== undefined) {
+      if (typeof req.body.title !== 'string' || !req.body.title.trim()) {
+        setStatusAndThrow(res, buildBadRequest('title must be a non-empty string'));
+      }
+      req.body.title = req.body.title.trim();
+    }
+
+    if (req.body.description !== undefined) {
+      if (typeof req.body.description !== 'string') {
+        setStatusAndThrow(res, buildBadRequest('description must be a string'));
+      }
+      req.body.description = req.body.description.trim();
+    }
+
+    if (req.body.mitigationActions !== undefined) {
+      if (typeof req.body.mitigationActions !== 'string' || !req.body.mitigationActions.trim()) {
+        setStatusAndThrow(res, buildBadRequest('mitigationActions must be a non-empty string'));
+      }
+      req.body.mitigationActions = req.body.mitigationActions.trim();
+    }
+
+    if (req.body.note !== undefined && typeof req.body.note !== 'string') {
+      setStatusAndThrow(res, buildBadRequest('note must be a string'));
     }
 
     if (req.body.probability && !VALID_PROBABILITIES.includes(req.body.probability)) {
