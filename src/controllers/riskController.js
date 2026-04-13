@@ -366,4 +366,16 @@ export const getRiskHistory = async (req, res, next) => {
   }
 };
 
+export const getAllUserRisks = async (req, res, next) => {
+  try {
+    const risks = await Risk.find({ createdBy: req.user._id })
+      .populate('projectId createdBy updatedBy history.changedBy', 'name email title')
+      .sort('-createdAt')
+      .lean();
+    res.status(200).json({ success: true, count: risks.length, data: risks });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export { VALID_RISK_STATUSES };

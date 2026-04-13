@@ -45,3 +45,41 @@ export const getProfile = async (req, res, next) => {
     res.json({ success: true, data: user });
   } catch (error) { next(error); }
 };
+
+export const updateProfile = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      res.status(404); throw new Error('User not found');
+    }
+
+    user.name = req.body.name || user.name;
+    user.email = req.body.email || user.email;
+
+    if (req.body.password) {
+      user.password = req.body.password;
+    }
+
+    if (req.body.settings) {
+      user.settings = { ...user.settings, ...req.body.settings };
+    }
+
+    const updatedUser = await user.save();
+
+    res.json({
+      success: true,
+      data: {
+        _id: updatedUser._id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        settings: updatedUser.settings,
+        token: generateToken(updatedUser._id) // Optionally return new token
+      }
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      res.status(400); return next(new Error('Email already taken'));
+    }
+    next(error);
+  }
+};
