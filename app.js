@@ -8,6 +8,7 @@ import { errorHandler, notFound } from './src/middleware/errorMiddleware.js';
 import authRoutes from './src/routes/authRoutes.js';
 import projectRoutes from './src/routes/projectRoutes.js';
 import riskRoutes from './src/routes/riskRoutes.js';
+import reportRoutes from './src/routes/reportRoutes.js';
 
 dotenv.config();
 
@@ -33,6 +34,7 @@ app.use(API_PREFIX, apiLimiter);
 app.use(`${API_PREFIX}/auth`, authRoutes);
 app.use(`${API_PREFIX}/projects`, projectRoutes);
 app.use(`${API_PREFIX}/risks`, riskRoutes);
+app.use(`${API_PREFIX}/reports`, reportRoutes);
 
 app.get('/', (req, res) => {
   res.status(200).json({
