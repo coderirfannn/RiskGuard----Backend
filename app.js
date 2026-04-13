@@ -9,11 +9,12 @@ import authRoutes from './src/routes/authRoutes.js';
 import projectRoutes from './src/routes/projectRoutes.js';
 import riskRoutes from './src/routes/riskRoutes.js';
 import reportRoutes from './src/routes/reportRoutes.js';
+import logger from './src/utils/logger.js';
 
 dotenv.config();
 
 const app = express();
-const API_PREFIX = process.env.API_PREFIX || '/api';
+const API_PREFIX = process.env.API_PREFIX || '/api/v1';
 const allowedOrigins = (process.env.FRONTEND_URL || '').split(',').map((origin) => origin.trim()).filter(Boolean);
 
 app.set('trust proxy', 1);
@@ -28,7 +29,11 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json({ limit: '1mb' }));
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev', {
+  stream: {
+    write: (message) => logger.info(message.trim())
+  }
+}));
 
 app.use(API_PREFIX, apiLimiter);
 app.use(`${API_PREFIX}/auth`, authRoutes);

@@ -19,8 +19,7 @@ export const exportRisksCSV = async (req, res, next) => {
             .lean();
 
         if (!risks || risks.length === 0) {
-            res.status(404);
-            throw new Error('No risks found to export');
+            return res.status(404).json({ success: false, message: 'No risks found to export', data: null, error: null });
         }
 
         // Map data to flat CSV structure

@@ -1,3 +1,12 @@
+// Ownership check utility
+const isProjectOwner = (project, user) => {
+  if (!project || !user) return false;
+  return String(project.owner) === String(user._id);
+};
+const isRiskOwner = (risk, user) => {
+  if (!risk || !user) return false;
+  return String(risk.createdBy) === String(user._id);
+};
 import Risk from '../models/Risk.js';
 import Project from '../models/Project.js';
 
@@ -80,6 +89,9 @@ export const createProjectRisk = async (req, res, next) => {
     if (!project) {
       setStatusAndThrow(res, buildNotFound('Project not found'));
     }
+    if (!isProjectOwner(project, req.user)) {
+      return res.status(403).json({ success: false, message: 'Forbidden: Not your project', data: null, error: null });
+    }
 
     const {
       title,
@@ -92,30 +104,30 @@ export const createProjectRisk = async (req, res, next) => {
     } = req.body;
 
     if (!title || !title.trim()) {
-      setStatusAndThrow(res, buildBadRequest('title is required'));
+      return res.status(400).json({ success: false, message: 'title is required', data: null, error: null });
     }
 
     if (description !== undefined && typeof description !== 'string') {
-      setStatusAndThrow(res, buildBadRequest('description must be a string'));
+      return res.status(400).json({ success: false, message: 'description must be a string', data: null, error: null });
     }
 
     if (note !== undefined && typeof note !== 'string') {
-      setStatusAndThrow(res, buildBadRequest('note must be a string'));
+      return res.status(400).json({ success: false, message: 'note must be a string', data: null, error: null });
     }
 
     if (!mitigationActions || !mitigationActions.trim()) {
-      setStatusAndThrow(res, buildBadRequest('mitigationActions is required'));
+      return res.status(400).json({ success: false, message: 'mitigationActions is required', data: null, error: null });
     }
     if (!VALID_PROBABILITIES.includes(probability)) {
-      setStatusAndThrow(res, buildBadRequest(`probability must be one of: ${VALID_PROBABILITIES.join(', ')}`));
+      return res.status(400).json({ success: false, message: `probability must be one of: ${VALID_PROBABILITIES.join(', ')}`, data: null, error: null });
     }
     if (!VALID_IMPACTS.includes(impact)) {
-      setStatusAndThrow(res, buildBadRequest(`impact must be one of: ${VALID_IMPACTS.join(', ')}`));
+      return res.status(400).json({ success: false, message: `impact must be one of: ${VALID_IMPACTS.join(', ')}`, data: null, error: null });
     }
 
     const initialStatus = currentStatus === undefined ? 'Open' : normalizeRiskStatus(currentStatus);
     if (!initialStatus) {
-      setStatusAndThrow(res, buildBadRequest(`currentStatus must be one of: ${VALID_RISK_STATUSES.join(', ')}`));
+      return res.status(400).json({ success: false, message: `currentStatus must be one of: ${VALID_RISK_STATUSES.join(', ')}`, data: null, error: null });
     }
 
     const risk = await Risk.create({
@@ -136,7 +148,7 @@ export const createProjectRisk = async (req, res, next) => {
       }]
     });
 
-    res.status(201).json({ success: true, data: risk });
+    res.status(201).json({ success: true, message: 'Risk created', data: risk, error: null });
   } catch (error) {
     console.error('[risk-create-error]', {
       method: req.method,
@@ -154,17 +166,33 @@ export const getProjectRisks = async (req, res, next) => {
     const { projectId } = req.params;
     ensureObjectId(projectId, 'projectId');
 
-    const projectExists = await Project.exists({ _id: projectId });
-    if (!projectExists) {
+    const project = await Project.findById(projectId);
+    if (!project) {
       setStatusAndThrow(res, buildNotFound('Project not found'));
     }
-
-    const risks = await Risk.find({ projectId })
-      .populate('createdBy updatedBy history.changedBy', 'name email')
-      .sort('-createdAt')
-      .lean();
-
-    res.status(200).json({ success: true, count: risks.length, data: risks });
+    if (!isProjectOwner(project, req.user)) {
+      return res.status(403).json({ success: false, message: 'Forbidden: Not your project', data: null, error: null });
+    }
+    // Pagination
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+    const [risks, total] = await Promise.all([
+      Risk.find({ projectId })
+        .populate('createdBy updatedBy history.changedBy', 'name email')
+        .sort('-createdAt')
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Risk.countDocuments({ projectId })
+    ]);
+    const meta = {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit)
+    };
+    res.status(200).json({ success: true, message: 'Project risks fetched', count: risks.length, data: risks, meta, error: null });
   } catch (error) {
     next(error);
   }
@@ -184,10 +212,14 @@ export const getRiskById = async (req, res, next) => {
 
     const risk = await Risk.findOne(query).populate('createdBy updatedBy history.changedBy', 'name email').lean();
     if (!risk) {
-      setStatusAndThrow(res, buildNotFound('Risk not found'));
+      return res.status(404).json({ success: false, message: 'Risk not found', data: null, error: null });
     }
-
-    res.status(200).json({ success: true, data: risk });
+    // Check project ownership or risk creator
+    const project = await Project.findById(risk.projectId);
+    if (!isProjectOwner(project, req.user) && !isRiskOwner(risk, req.user)) {
+      return res.status(403).json({ success: false, message: 'Forbidden: Not your risk/project', data: null, error: null });
+    }
+    res.status(200).json({ success: true, message: 'Risk fetched', data: risk, error: null });
   } catch (error) {
     next(error);
   }
@@ -202,6 +234,10 @@ export const updateRisk = async (req, res, next) => {
     const risk = await Risk.findById(riskId);
     if (!risk) {
       setStatusAndThrow(res, buildNotFound('Risk not found'));
+    }
+    const project = await Project.findById(risk.projectId);
+    if (!isProjectOwner(project, req.user) && !isRiskOwner(risk, req.user)) {
+      return res.status(403).json({ success: false, message: 'Forbidden: Not your risk/project', data: null, error: null });
     }
 
     if (req.body.title !== undefined) {
@@ -280,7 +316,10 @@ export const deleteRisk = async (req, res, next) => {
     if (!risk) {
       setStatusAndThrow(res, buildNotFound('Risk not found'));
     }
-
+    const project = await Project.findById(risk.projectId);
+    if (!isProjectOwner(project, req.user) && !isRiskOwner(risk, req.user)) {
+      return res.status(403).json({ success: false, message: 'Forbidden: Not your risk/project', data: null, error: null });
+    }
     await risk.deleteOne();
     res.status(200).json({ success: true, data: {} });
   } catch (error) {

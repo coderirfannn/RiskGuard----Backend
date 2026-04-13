@@ -1,24 +1,28 @@
 export const errorHandler = (err, req, res, next) => {
+
     let statusCode = err.status || (res.statusCode === 200 ? 500 : res.statusCode);
-    
+
     // Mongoose casting err handles
-    if(err.name === 'CastError' && err.kind === 'ObjectId') {
+    if (err.name === 'CastError' && err.kind === 'ObjectId') {
         statusCode = 404;
         err.message = 'Resource not found';
     }
 
     // Validation handling
-    if(err.name === 'ValidationError') {
+    if (err.name === 'ValidationError') {
         statusCode = 400;
         err.message = Object.values(err.errors).map(val => val.message).join(', ');
     }
 
     res.status(statusCode).json({
         success: false,
-        message: err.message,
-        path: req.originalUrl,
-        timestamp: new Date().toISOString(),
-        stack: process.env.NODE_ENV === 'production' ? null : err.stack,
+        message: err.message || 'An error occurred',
+        data: null,
+        error: process.env.NODE_ENV === 'production' ? undefined : {
+            stack: err.stack,
+            path: req.originalUrl,
+            timestamp: new Date().toISOString(),
+        }
     });
 };
 
