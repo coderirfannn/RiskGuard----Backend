@@ -15,5 +15,5 @@ const logger = createLogger({
     new transports.File({ filename: 'logs/combined.log' })
   ]
 });
-// code 
-module.exports = logger;
+
+export default logger;
