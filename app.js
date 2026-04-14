@@ -3,17 +3,26 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { apiLimiter } from './src/middleware/rateLimiter.js';
 import { errorHandler, notFound } from './src/middleware/errorMiddleware.js';
 import authRoutes from './src/routes/authRoutes.js';
+import userRoutes from './src/routes/userRoutes.js';
 import projectRoutes from './src/routes/projectRoutes.js';
 import riskRoutes from './src/routes/riskRoutes.js';
-import reportRoutes from './src/routes/reportRoutes.js';
+// ...existing code...
 import logger from './src/utils/logger.js';
 
 dotenv.config();
 
 const app = express();
+
+// Serve static frontend files (pages, css, js, etc.)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+app.use(express.static(path.join(__dirname, '../')));
+
 const API_PREFIX = process.env.API_PREFIX || '/api/v1';
 const allowedOrigins = (process.env.FRONTEND_URL || '').split(',').map((origin) => origin.trim()).filter(Boolean);
 
@@ -37,9 +46,10 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev', {
 
 app.use(API_PREFIX, apiLimiter);
 app.use(`${API_PREFIX}/auth`, authRoutes);
+app.use(`${API_PREFIX}/auth/users`, userRoutes);
 app.use(`${API_PREFIX}/projects`, projectRoutes);
 app.use(`${API_PREFIX}/risks`, riskRoutes);
-app.use(`${API_PREFIX}/reports`, reportRoutes);
+// ...existing code...
 
 app.get('/', (req, res) => {
   res.status(200).json({

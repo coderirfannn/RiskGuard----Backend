@@ -59,13 +59,17 @@ export const getProjects = async (req, res, next) => {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.max(1, Math.min(100, parseInt(req.query.limit) || 20));
     const skip = (page - 1) * limit;
+    let query = {};
+    if (!req.user || req.user.role !== 'admin') {
+      query.owner = req.user._id;
+    }
     const [projects, total] = await Promise.all([
-      Project.find({ owner: req.user._id })
+      Project.find(query)
         .sort('-createdAt')
         .skip(skip)
         .limit(limit)
         .lean(),
-      Project.countDocuments({ owner: req.user._id })
+      Project.countDocuments(query)
     ]);
     const meta = {
       page,
