@@ -148,6 +148,23 @@ export const createProjectRisk = async (req, res, next) => {
       }]
     });
 
+    // Notify project owner (and members if needed)
+    try {
+      const { sendUserNotification } = await import('../utils/socket.js');
+      const project = await Project.findById(projectId);
+      if (project && project.owner) {
+        sendUserNotification(project.owner.toString(), { message: `A new risk was created: ${risk.title}` });
+      }
+      // Optionally notify members
+      if (project && Array.isArray(project.members)) {
+        project.members.forEach(memberId => {
+          if (memberId && memberId.toString() !== req.user._id.toString()) {
+            sendUserNotification(memberId.toString(), { message: `A new risk was created: ${risk.title}` });
+          }
+        });
+      }
+    } catch (e) { /* ignore notification errors */ }
+
     res.status(201).json({ success: true, message: 'Risk created', data: risk, error: null });
   } catch (error) {
     console.error('[risk-create-error]', {
@@ -301,6 +318,23 @@ export const updateRisk = async (req, res, next) => {
     risk.updatedBy = req.user._id;
 
     const updatedRisk = await risk.save();
+
+    // Notify project owner (and members if needed)
+    try {
+      const { sendUserNotification } = await import('../utils/socket.js');
+      const project = await Project.findById(risk.projectId);
+      if (project && project.owner) {
+        sendUserNotification(project.owner.toString(), { message: `Risk updated: ${risk.title}` });
+      }
+      if (project && Array.isArray(project.members)) {
+        project.members.forEach(memberId => {
+          if (memberId && memberId.toString() !== req.user._id.toString()) {
+            sendUserNotification(memberId.toString(), { message: `Risk updated: ${risk.title}` });
+          }
+        });
+      }
+    } catch (e) { /* ignore notification errors */ }
+
     res.status(200).json({ success: true, data: updatedRisk });
   } catch (error) {
     next(error);
@@ -407,7 +441,17 @@ export const getRiskHistory = async (req, res, next) => {
 
 export const getAllUserRisks = async (req, res, next) => {
   try {
-    const risks = await Risk.find({ createdBy: req.user._id })
+    // Find all projects where user is owner or member
+    const projects = await Project.find({
+      $or: [
+        { owner: req.user._id },
+        { members: req.user._id }
+      ]
+    }).select('_id');
+    const projectIds = projects.map(p => p._id);
+
+    // Find all risks in those projects
+    const risks = await Risk.find({ projectId: { $in: projectIds } })
       .populate('projectId createdBy updatedBy history.changedBy', 'name email title')
       .sort('-createdAt')
       .lean();
