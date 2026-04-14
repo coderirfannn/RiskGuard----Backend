@@ -1,4 +1,5 @@
-const { createLogger, format, transports } = require('winston');
+import winston from 'winston';
+const { createLogger, format, transports } = winston;
 
 const logger = createLogger({
   level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
