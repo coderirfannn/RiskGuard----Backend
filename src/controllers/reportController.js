@@ -12,8 +12,17 @@ export const exportRisksCSV = async (req, res, next) => {
         }).lean();
         const projectIds = projects.map(p => p._id);
 
-        // Fetch all risks belonging to these projects
-        const risks = await Risk.find({ project: { $in: projectIds } })
+        // Build risk query
+        const riskQuery = { project: { $in: projectIds } };
+        const { startDate, endDate } = req.query;
+        if (startDate || endDate) {
+            riskQuery.createdAt = {};
+            if (startDate) riskQuery.createdAt.$gte = new Date(startDate);
+            if (endDate) riskQuery.createdAt.$lte = new Date(endDate);
+        }
+
+        // Fetch all risks belonging to these projects, filtered by date if provided
+        const risks = await Risk.find(riskQuery)
             .populate('project', 'title name')
             .populate('owner', 'name email')
             .lean();
