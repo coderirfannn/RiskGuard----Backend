@@ -7,7 +7,7 @@ export function initSocket(server) {
   if (ioInstance) return ioInstance;
   ioInstance = new Server(server, {
     cors: {
-      origin: '*', // Adjust for production
+      origin: '*', // TODO: Restrict to your frontend domain in production, e.g. origin: 'https://your-frontend.com'
       methods: ['GET', 'POST']
     }
   });

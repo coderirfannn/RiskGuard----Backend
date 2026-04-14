@@ -24,7 +24,7 @@ const normalizeDate = (value, fieldName) => {
 
 export const createProject = async (req, res, next) => {
   try {
-    const { title, description, owner, startDate, endDate } = req.body;
+    const { title, description, startDate, endDate } = req.body;
 
     if (!title || !title.trim()) {
       res.status(400);
@@ -41,7 +41,7 @@ export const createProject = async (req, res, next) => {
     const project = await Project.create({
       title: title.trim(),
       description: typeof description === 'string' ? description.trim() : '',
-      owner: owner ?? req.user?._id?.toString?.(),
+      owner: req.user._id,
       startDate: parsedStartDate,
       endDate: parsedEndDate
     });
@@ -122,7 +122,7 @@ export const updateProject = async (req, res, next) => {
       return res.json({ success: false, message: 'Forbidden: Not your project', data: null, error: null });
     }
 
-    const allowedFields = ['title', 'description', 'owner', 'startDate', 'endDate'];
+    const allowedFields = ['title', 'description', 'startDate', 'endDate'];
     for (const field of allowedFields) {
       if (req.body[field] !== undefined) {
         project[field] = req.body[field];
